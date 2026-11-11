@@ -168,6 +168,48 @@ A few things you can say:
 > to let them in, and `JARVIS_MCP_SERVERS` to choose which `~/.claude.json`
 > servers JARVIS gets.
 
+### Memory
+
+JARVIS remembers you between conversations, and all of it stays on this machine
+— two plain files in `~/.jarvis/memory`, no account and no service.
+
+- **`profile.md`** — yours to write. Who you are, what you do, how you like
+  answers. He reads it at the start of every session.
+- **`memories.json`** — his. One short fact per entry, saved when you tell him
+  something lasting or say *"remember that …"*.
+
+Say *"get to know me"* for a short interview that fills it in, *"what do you
+remember about me"* to see it, and *"forget that"* to remove something. Saving
+works in read-only mode; the store sits outside the agent's file tools, and he
+is told to save only what you said yourself, never what a web page said. Turn
+it off with `JARVIS_DISABLE=memory`.
+
+### Skills
+
+A skill is a rehearsed routine in a Markdown file: a name, a one-line
+description and the steps. Forty ship in [`skills/`](skills) — the morning
+briefing, inbox summary, deep research, fact-check, meeting prep, trip planner,
+study coach, form check through the camera, and the rest. Ask for what you want
+in ordinary words (*"brief me"*, *"quiz me on the planets"*, *"plan a weekend in
+Rome"*) and he loads the matching one.
+
+Add your own by dropping a file in `~/.jarvis/skills`:
+
+```markdown
+---
+name: friday-wrap-up
+description: Close out the week. Use for "wrap up the week", "Friday review".
+---
+
+1. Ask what shipped this week.
+2. Put it on a blade under Done and Carried over.
+```
+
+A file with the same name as a built-in replaces it. With write access on you
+can also teach one by voice — *"learn this: when I say …"*. Skills that need
+mail or a calendar use whatever connectors you have, and say so when there are
+none. Turn them off with `JARVIS_DISABLE=skills`.
+
 ### JARVIS controls the interface
 
 He drives the UI through MCP tools the bridge exposes:
@@ -236,7 +278,9 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 | `JARVIS_ALLOW_WRITES` | off | `1` allows effectful tools (see below) |
 | `JARVIS_MCP_SERVERS` | all configured | Comma-separated `~/.claude.json` servers to pass on; empty passes none |
 | `JARVIS_ACCOUNT_CONNECTORS` | off | `1` lets your claude.ai account's connectors join the session |
-| `JARVIS_DISABLE` | none | Comma-separated capabilities to leave out: `browser`, `camera`, `interface` |
+| `JARVIS_DISABLE` | none | Comma-separated capabilities to leave out: `browser`, `camera`, `interface`, `memory`, `skills` |
+| `JARVIS_MEMORY_DIR` | `~/.jarvis/memory` | Where the profile and remembered facts are kept |
+| `JARVIS_SKILLS_DIR` | `~/.jarvis/skills` | Where your own skill files go |
 | `JARVIS_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |
 | `JARVIS_ALLOW_NO_ORIGIN` | off | Accept connections with no `Origin` header |
 | `JARVIS_WORKSPACE` | `~/.jarvis/workspace` | The agent's working directory; file tools are confined to it and the temp directory |

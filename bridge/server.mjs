@@ -21,6 +21,8 @@ import { displayServer } from './panels.mjs'
 import { uiServer } from './ui.mjs'
 import { chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
+import { memoryServer, openMemory } from './memory.mjs'
+import { openSkills, skillsServer } from './skills.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
@@ -160,7 +162,8 @@ const ALLOW_WRITES =
 
 /**
  * Built-in capabilities to leave out entirely: `browser` (the user's own
- * Chrome), `camera`, `interface` (the ui_* tools). A capability left out is
+ * Chrome), `camera`, `interface` (the ui_* tools), `memory` (what JARVIS keeps
+ * between conversations) and `skills` (his named routines). A capability left out is
  * not merely denied — its tools never reach the model, which also saves their
  * schemas on every turn (about 3,100, 1,400 and 4,800 input tokens
  * respectively). The display itself is always on; it is how JARVIS shows
@@ -489,6 +492,19 @@ const SYSTEM_PROMPT = [
   DISABLED.has('camera') ? '' : PROMPT_EYES,
   PROMPT_TOOLS,
 ].join('')
+
+/**
+ * Long-term memory and skills. Both are read when a session starts rather than
+ * here, so a fact saved in one conversation, or a skill file dropped into the
+ * folder, is there for the next one without restarting the bridge.
+ */
+const MEMORY = DISABLED.has('memory') ? null : openMemory()
+const SKILLS = DISABLED.has('skills') ? null : openSkills()
+
+const sessionPrompt = () =>
+  SYSTEM_PROMPT +
+  (SKILLS ? SKILLS.prompt({ canTeach: ALLOW_WRITES }) : '') +
+  (MEMORY ? MEMORY.prompt() : '')
 
 /**
  * ElevenLabs credentials, borrowed from the MCP server config.
@@ -1100,6 +1116,8 @@ console.log(
 // at the tool boundary from one that is broken, and this is the one place the
 // difference can be stated before anybody asks a question that depends on it.
 if (DISABLED.size) console.log(`[jarvis] disabled: ${[...DISABLED].join(', ')}`)
+if (MEMORY) console.log(`[jarvis] memory: ${MEMORY.count()} remembered · ${MEMORY.dir}`)
+if (SKILLS) console.log(`[jarvis] skills: ${SKILLS.all().length} available · your own go in ${SKILLS.userDir}`)
 if (!DISABLED.has('browser')) void chromeAvailable().then((ok) => {
   console.log(
     ok
@@ -1278,6 +1296,10 @@ wss.on('connection', (socket) => {
     // interface is the interface talking about itself, not work being done for
     // the user, and the badge would be describing the very thing they can see.
     if (name.startsWith('mcp__jarvis_ui__')) return
+    // Looking something up in his own memory, or reading a skill's steps, is
+    // thinking rather than work. Saving and forgetting stay announced, so a
+    // memory is never written without the badge showing it.
+    if (name === 'mcp__jarvis_memory__recall' || name === 'mcp__jarvis_skills__skill') return
     if (decideTool(name)) return sendTurn({ type: 'tool', name })
     if (id) heldTools.set(id, name)
   }
@@ -1318,12 +1340,18 @@ wss.on('connection', (socket) => {
           : { jarvis_chrome: chromeServer({ allowWrites: ALLOW_WRITES }) }),
         // The camera, which unlike everything else here has to ask and wait.
         ...(DISABLED.has('camera') ? {} : { jarvis_eyes: visionServer(ask) }),
+        // What he knows about the user from earlier conversations, and the
+        // routines he can run. Both live in files under ~/.jarvis.
+        ...(MEMORY ? { jarvis_memory: memoryServer(MEMORY) } : {}),
+        ...(SKILLS ? { jarvis_skills: skillsServer(SKILLS, { allowWrites: ALLOW_WRITES }) } : {}),
       },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk
       // of input tokens on every turn. Replacing it makes the persona stick,
       // keeps answers short enough to speak, and cuts cost per turn.
-      systemPrompt: SYSTEM_PROMPT,
+      // Assembled per session: the persona, then the skills on offer and
+      // what is remembered about the user as of this connection.
+      systemPrompt: sessionPrompt(),
       // Run from JARVIS's own workspace rather than the home directory. MCP
       // discovery does not depend on it — settingSources is empty and the
       // servers are passed in explicitly above — and file tools resolve

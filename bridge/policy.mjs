@@ -153,6 +153,13 @@ export function decideTool(name, allowWrites = false) {
     // indicator the user can see for as long as it is live.
     if (server === 'jarvis_eyes') return true
 
+    // Memory and skills, both in this process and both writing only to their
+    // own folders under ~/.jarvis. `remember` and `forget` begin with no read
+    // verb, and a memory that waits for write access is not a memory. The
+    // skill-teaching tools are withheld the way the browser's acting tools
+    // are — skillsServer() does not build them without allowWrites.
+    if (server === 'jarvis_memory' || server === 'jarvis_skills') return true
+
     const tool = mcpToolOf(name)
     if (EFFECTFUL_VERB.test(tool) && !VETO_EXEMPT.has(`${server}__${tool}`)) {
       return allowWrites
